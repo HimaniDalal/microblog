@@ -58,7 +58,7 @@ pipeline {
     agent {
         docker {
             image 'python:3.9-slim'  // You can use any Linux-based Docker image here
-            label 'docker-agent'     // Optional, if you have specific agents
+            label 'microblog_docker'     // Optional, if you have specific agents
         }
     }
 
