@@ -40,6 +40,8 @@ pipeline {
     }
 }
  */
+
+/*
 pipeline {
     agent any
     stages {
@@ -49,5 +51,30 @@ pipeline {
                 sh 'docker build -t microblog-app .'
             }
         }
+    }
+}
+ */
+pipeline {
+    agent {
+        docker {
+            image 'python:3.9-slim'  // You can use any Linux-based Docker image here
+            label 'docker-agent'     // Optional, if you have specific agents
+        }
+    }
+    environment {
+        // Define any necessary environment variables here
+    }
+    stages {
+        stage('Checkout') {
+            steps {
+                git 'https://github.com/HimaniDalal/microblog.git'
+            }
+        }
+        stage('Build') {
+            steps {
+                sh 'python --version'  // Any shell command that requires Linux-like environment
+            }
+        }
+        // Additional stages as needed
     }
 }
