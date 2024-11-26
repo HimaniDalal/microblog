@@ -1,3 +1,50 @@
+pipeline {
+    agent any
+    environment {
+        DOCKER_IMAGE = 'microblog'
+    }
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    docker.build("${env.DOCKER_IMAGE}")
+                }
+            }
+        }
+        stage('Test') {
+            steps {
+                script {
+                    // Assuming you have a test command like pytest for Flask
+                    sh 'pytest'
+                }
+            }
+        }
+        stage('Push Docker Image') {
+            steps {
+                script {
+                    docker.withRegistry('https://index.docker.io/v1/', 'docker-hub-credentials') {
+                        docker.image("${env.DOCKER_IMAGE}").push()
+                    }
+                }
+            }
+        }
+        stage('Deploy') {
+            steps {
+                script {
+                    // Assuming you have some deployment script or Docker commands
+                    sh './deploy.sh'
+                }
+            }
+        }
+    }
+}
+
+
 /*
 pipeline {
     agent any
@@ -54,6 +101,7 @@ pipeline {
     }
 }
  */
+/*
 pipeline {
     agent {
         docker {
@@ -62,9 +110,11 @@ pipeline {
         }
     }
 
-   /*  environment {
+    */
+/*  environment {
         // Define any necessary environment variables here
-    } */
+    } *//*
+
     stages {
         stage('Checkout') {
             steps {
@@ -79,3 +129,4 @@ pipeline {
 
     }
 }
+ */
