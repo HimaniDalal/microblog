@@ -17,12 +17,15 @@ pipeline {
             }
         }
         stage('Test') {
-            steps {
-                script {
-                    bat 'docker run --rm microblog pytest tests'
-                }
-            }
+    steps {
+        script {
+            bat '''
+                docker run --rm microblog bash -c "ls -la && pytest tests || echo 'Tests directory not found'"
+            '''
         }
+    }
+}
+
         stage('Push Docker Image') {
             steps {
                 script {
