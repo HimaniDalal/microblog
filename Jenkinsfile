@@ -18,8 +18,10 @@ pipeline {
         }
         stage('Test') {
             steps {
-                bat 'pytest tests'
+                script {
+                    bat 'docker run --rm microblog pytest tests'
                 }
+            }
         }
         stage('Push Docker Image') {
             steps {
