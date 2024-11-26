@@ -18,11 +18,8 @@ pipeline {
         }
         stage('Test') {
             steps {
-                script {
-                    // Assuming you have a test command like pytest for Flask
-                    sh 'pytest'
+                bat 'pytest tests'
                 }
-            }
         }
         stage('Push Docker Image') {
             steps {
