@@ -76,6 +76,6 @@ pipeline {
                echo "Building..."  // Any shell command that requires Linux-like environment
             }
         }
-        // Additional stages as needed
+
     }
 }
