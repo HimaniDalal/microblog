@@ -32,10 +32,7 @@ pipeline {
         }
         stage('Deploy') {
             steps {
-                script {
-                    // Assuming you have some deployment script or Docker commands
-                    sh './deploy.sh'
-                }
+                bat 'set'
             }
         }
     }
