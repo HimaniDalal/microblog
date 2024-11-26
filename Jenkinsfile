@@ -61,9 +61,10 @@ pipeline {
             label 'docker-agent'     // Optional, if you have specific agents
         }
     }
-    environment {
+
+   /*  environment {
         // Define any necessary environment variables here
-    }
+    } */
     stages {
         stage('Checkout') {
             steps {
@@ -72,7 +73,7 @@ pipeline {
         }
         stage('Build') {
             steps {
-                sh 'python --version'  // Any shell command that requires Linux-like environment
+               echo "Building..."  // Any shell command that requires Linux-like environment
             }
         }
         // Additional stages as needed
