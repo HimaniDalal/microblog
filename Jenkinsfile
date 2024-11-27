@@ -101,6 +101,28 @@ pipeline {
         }
     }
 }
+stage('SonarQube Scan') {
+    steps {
+        withSonarQubeEnv('SonarQube') {
+            bat 'sonar-scanner.bat'
+        }
+    }
+}
+stage('Deploy') {
+    steps {
+        bat 'docker-compose up -d'
+    }
+}
+stage('Integration Tests') {
+    steps {
+        bat 'python -m unittest discover tests/'
+    }
+}
+post {
+    failure {
+         bat 'echo Build failed!'
+    }
+}
 
 /*
 pipeline {
