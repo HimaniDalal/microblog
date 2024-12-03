@@ -1,6 +1,8 @@
 import logging
 from logging.handlers import SMTPHandler, RotatingFileHandler
 import os
+
+from elastic_transport import TransportError
 from flask import Flask, request, current_app
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
@@ -38,8 +40,21 @@ def create_app(config_class=Config):
     mail.init_app(app)
     moment.init_app(app)
     babel.init_app(app, locale_selector=get_locale)
-    app.elasticsearch = Elasticsearch([app.config['ELASTICSEARCH_URL']]) \
-        if app.config['ELASTICSEARCH_URL'] else None
+    app.elasticsearch = None
+    if app.config['ELASTICSEARCH_URL']:
+        try:
+            app.elasticsearch = Elasticsearch(
+                app.config['ELASTICSEARCH_URL'],
+                http_auth=('elastic', 'BNzfykC+dfsOZeI-PRL1'),
+                verify_certs=False  # Disable certificate verification for local testing
+            )
+            if app.elasticsearch.ping():
+                print("Elasticsearch connected successfully.")
+            else:
+                print("Elasticsearch connection failed.")
+        except TransportError as e:
+            print(f"Error connecting to Elasticsearch: {e}")
+
     app.redis = Redis.from_url(app.config['REDIS_URL'])
     app.task_queue = rq.Queue('microblog-tasks', connection=app.redis)
 
@@ -92,6 +107,11 @@ def create_app(config_class=Config):
 
         app.logger.setLevel(logging.INFO)
         app.logger.info('Microblog startup')
+
+        if app.elasticsearch:
+            print(f"Elasticsearch is connected: {app.elasticsearch.ping()}")
+        else:
+            print("Elasticsearch is not configured.")
 
     return app
 

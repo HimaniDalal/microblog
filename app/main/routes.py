@@ -19,6 +19,7 @@ def before_request():
         current_user.last_seen = datetime.now(timezone.utc)
         db.session.commit()
         g.search_form = SearchForm()
+        print(f"SearchForm Initialized: {g.search_form.q.data}")
     g.locale = str(get_locale())
 
 
@@ -166,16 +167,44 @@ def translate_text():
 @login_required
 def search():
     if not g.search_form.validate():
+        flash("Invalid search query. Please try again.", "error")
         return redirect(url_for('main.explore'))
+
+    query = g.search_form.q.data.strip()
+    if not query:
+        flash("Search query cannot be empty.", "error")
+        return redirect(url_for('main.explore'))
+
     page = request.args.get('page', 1, type=int)
-    posts, total = Post.search(g.search_form.q.data, page,
-                               current_app.config['POSTS_PER_PAGE'])
-    next_url = url_for('main.search', q=g.search_form.q.data, page=page + 1) \
-        if total > page * current_app.config['POSTS_PER_PAGE'] else None
-    prev_url = url_for('main.search', q=g.search_form.q.data, page=page - 1) \
+    per_page = current_app.config['POSTS_PER_PAGE']
+
+    # Debug: Log the query
+    print(f"Search Query: {query}")
+
+    # Use Post.search() from SearchableMixin
+    posts, total = Post.search(query, page, per_page)
+
+    # Debugging
+    # print(f"Search Query: {query}")
+    print(f"Total Results: {total}")
+    print(f"Posts: {posts}")
+
+    next_url = (
+        url_for('main.search', q=query, page=page + 1)
+        if total > page * per_page else None
+    )
+    prev_url = (
+        url_for('main.search', q=query, page=page - 1)
         if page > 1 else None
-    return render_template('search.html', title=_('Search'), posts=posts,
-                           next_url=next_url, prev_url=prev_url)
+    )
+
+    return render_template(
+        'search.html',
+        title=_('Search'),
+        posts=posts,
+        next_url=next_url,
+        prev_url=prev_url,
+    )
 
 
 @bp.route('/send_message/<recipient>', methods=['GET', 'POST'])
@@ -239,3 +268,58 @@ def notifications():
         'data': n.get_data(),
         'timestamp': n.timestamp
     } for n in notifications]
+
+@bp.route('/archive_post/<int:post_id>', methods=['POST'])
+@login_required
+def archive_post(post_id):
+    post = db.session.get(Post, post_id)
+    if post is None:
+        flash(_('Post not found'), 'error')
+        return redirect(url_for('main.index'))
+    current_user.archive_post(post)
+    db.session.commit()
+    flash(_('Post archived successfully!'))
+    return redirect(url_for('main.index'))
+
+@bp.route('/unarchive_post/<int:post_id>', methods=['POST'])
+@login_required
+def unarchive_post(post_id):
+    post = db.session.get(Post, post_id)
+    if post is None:
+        flash(_('Post not found'), 'error')
+        return redirect(url_for('main.index'))
+    current_user.unarchive_post(post)
+    db.session.commit()
+    flash(_('Post unarchived successfully!'))
+    return redirect(url_for('main.index'))
+@bp.route('/archived_posts')
+@login_required
+def archived_posts():
+    page = request.args.get('page', 1, type=int)
+    posts = db.paginate(
+        sa.select(Post).where(Post.archived_by.contains(current_user)),
+        page=page,
+        per_page=current_app.config['POSTS_PER_PAGE'],
+        error_out=False
+    )
+    next_url = url_for('main.archived_posts', page=posts.next_num) if posts.has_next else None
+    prev_url = url_for('main.archived_posts', page=posts.prev_num) if posts.has_prev else None
+    return render_template('archived_posts.html', title=_('Archived Posts'), posts=posts.items,
+                           next_url=next_url, prev_url=prev_url)
+@bp.route('/delete_post/<int:post_id>', methods=['POST'])
+@login_required
+def delete_post(post_id):
+    post = db.session.get(Post, post_id)
+    if post is None or post.author != current_user:
+        flash(_('Post not found or you do not have permission to delete it.'), 'error')
+        return redirect(url_for('main.index'))
+
+    if not post.can_be_deleted():
+        flash(_('This post cannot be deleted as it has been archived by other users.'), 'error')
+        return redirect(url_for('main.index'))
+
+    # Remove the post
+    db.session.delete(post)
+    db.session.commit()
+    flash(_('Post has been deleted.'), 'success')
+    return redirect(url_for('main.index'))

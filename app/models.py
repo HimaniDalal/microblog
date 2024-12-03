@@ -13,24 +13,37 @@ import jwt
 import redis
 import rq
 from app import db, login
-from app.search import add_to_index, remove_from_index, query_index
+from app.search import add_to_index, remove_from_index, query_index, reindex
+from sqlalchemy.ext.declarative import declared_attr
 
 
 class SearchableMixin:
     @classmethod
     def search(cls, expression, page, per_page):
+        # Query the index for matching IDs and total matches
         ids, total = query_index(cls.__tablename__, expression, page, per_page)
+        print(f"Index name derived from __tablename__: {cls.__tablename__}")
+
         if total == 0:
+            print(f"No results found for query: {expression}")
             return [], 0
-        when = []
-        for i in range(len(ids)):
-            when.append((ids[i], i))
+
+        # Generate order for query based on the order of IDs in the search results
+        whens = [(cls.id == id, index) for index, id in enumerate(ids)]
         query = sa.select(cls).where(cls.id.in_(ids)).order_by(
-            db.case(*when, value=cls.id))
-        return db.session.scalars(query), total
+            db.case(*whens, value=cls.id)
+        )
+
+        # Debugging
+        print(f"Search results (IDs): {ids}")
+        print(f"SQL Query: {query}")
+
+        # Execute query and return results
+        return db.session.scalars(query).all(), total
 
     @classmethod
     def before_commit(cls, session):
+        # Track changes before committing
         session._changes = {
             'add': list(session.new),
             'update': list(session.dirty),
@@ -39,6 +52,7 @@ class SearchableMixin:
 
     @classmethod
     def after_commit(cls, session):
+        # Update the search index after committing changes
         for obj in session._changes['add']:
             if isinstance(obj, SearchableMixin):
                 add_to_index(obj.__tablename__, obj)
@@ -50,12 +64,8 @@ class SearchableMixin:
                 remove_from_index(obj.__tablename__, obj)
         session._changes = None
 
-    @classmethod
-    def reindex(cls):
-        for obj in db.session.scalars(sa.select(cls)):
-            add_to_index(cls.__tablename__, obj)
 
-
+# Attach database event listeners
 db.event.listen(db.session, 'before_commit', SearchableMixin.before_commit)
 db.event.listen(db.session, 'after_commit', SearchableMixin.after_commit)
 
@@ -94,8 +104,13 @@ followers = sa.Table(
               primary_key=True)
 )
 
-
+archived_posts = db.Table(
+    'archived_posts',
+    db.Column('user_id', db.Integer, db.ForeignKey('user.id'), primary_key=True),
+    db.Column('post_id', db.Integer, db.ForeignKey('posts.id'), primary_key=True)
+)
 class User(PaginatedAPIMixin, UserMixin, db.Model):
+    __tablename__ = 'user'
     id: so.Mapped[int] = so.mapped_column(primary_key=True)
     username: so.Mapped[str] = so.mapped_column(sa.String(64), index=True,
                                                 unique=True)
@@ -127,6 +142,27 @@ class User(PaginatedAPIMixin, UserMixin, db.Model):
     notifications: so.WriteOnlyMapped['Notification'] = so.relationship(
         back_populates='user')
     tasks: so.WriteOnlyMapped['Task'] = so.relationship(back_populates='user')
+
+    # Relationship for archived posts
+    archived_posts = db.relationship(
+        'Post',
+        secondary=archived_posts,
+        back_populates='archived_by'
+    )
+
+    def archive_post(self, post):
+        """Archive a post."""
+        if not self.is_post_archived(post):
+            self.archived_posts.append(post)
+
+    def unarchive_post(self, post):
+        """Unarchive a post."""
+        if self.is_post_archived(post):
+            self.archived_posts.remove(post)
+
+    def is_post_archived(self, post):
+        """Check if a post is archived."""
+        return post in self.archived_posts
 
     def __repr__(self):
         return '<User {}>'.format(self.username)
@@ -170,9 +206,12 @@ class User(PaginatedAPIMixin, UserMixin, db.Model):
             sa.select(Post)
             .join(Post.author.of_type(Author))
             .join(Author.followers.of_type(Follower), isouter=True)
-            .where(sa.or_(
-                Follower.id == self.id,
-                Author.id == self.id,
+            .where(sa.and_(
+                sa.or_(
+                    Follower.id == self.id,  # Posts from users you follow
+                    Author.id == self.id,  # Your own posts
+                ),
+                ~Post.archived_by.any(User.id == self.id)  # Exclude archived posts
             ))
             .group_by(Post)
             .order_by(Post.timestamp.desc())
@@ -286,18 +325,22 @@ def load_user(id):
 
 class Post(SearchableMixin, db.Model):
     __searchable__ = ['body']
-    id: so.Mapped[int] = so.mapped_column(primary_key=True)
-    body: so.Mapped[str] = so.mapped_column(sa.String(140))
-    timestamp: so.Mapped[datetime] = so.mapped_column(
-        index=True, default=lambda: datetime.now(timezone.utc))
-    user_id: so.Mapped[int] = so.mapped_column(sa.ForeignKey(User.id),
-                                               index=True)
-    language: so.Mapped[Optional[str]] = so.mapped_column(sa.String(5))
+    __tablename__ = 'posts'
+    id = db.Column(db.Integer, primary_key=True)
+    body = db.Column(db.Text, nullable=False)
+    timestamp = db.Column(db.DateTime, index=True, default=datetime.utcnow)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
+    language = db.Column(db.String(5))
 
-    author: so.Mapped[User] = so.relationship(back_populates='posts')
+    author = db.relationship('User', back_populates='posts')
+    archived_by = db.relationship(
+        'User',
+        secondary=archived_posts,
+        back_populates='archived_posts'
+    )
 
     def __repr__(self):
-        return '<Post {}>'.format(self.body)
+        return f'<Post {self.body}>'
 
 
 class Message(db.Model):

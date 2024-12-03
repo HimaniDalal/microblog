@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1>{{ _('Archived Posts') }}</h1>
+{% for post in posts %}
+    {% include '_post.html' %}
+{% endfor %}
+<nav>
+    <ul class="pagination">
+        <li class="page-item{% if not prev_url %} disabled{% endif %}">
+            <a class="page-link" href="{{ prev_url }}">&#x2190; {{ _('Newer posts') }}</a>
+        </li>
+        <li class="page-item{% if not next_url %} disabled{% endif %}">
+            <a class="page-link" href="{{ next_url }}">{{ _('Older posts') }} &#x2192;</a>
+        </li>
+    </ul>
+</nav>
+{% endblock %}
